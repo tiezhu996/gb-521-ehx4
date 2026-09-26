@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Form, Input, InputNumber, Modal, Select, Switch, Table, Tabs, message } from 'antd';
+import { Alert, Button, Form, Input, InputNumber, Modal, Select, Switch, Table, Tabs, Tag, message } from 'antd';
 import { Edit3, GitPullRequestArrow, Network, Plus, RefreshCw } from 'lucide-react';
 import type { ColumnsType } from 'antd/es/table';
 import { PageHeader } from '../components/common/PageHeader';
@@ -8,15 +8,17 @@ import { TopologyView } from '../components/network/TopologyView';
 import { useAuth } from '../hooks/useAuth';
 import { useEdgeStore } from '../stores/edgeStore';
 import { useNodeStore } from '../stores/nodeStore';
+import { useStoppageStore } from '../stores/stoppageStore';
 import type { CreateEdgeInput, AirwayEdge, UpdateEdgeInput } from '../types/edge';
 import type { CreateNodeInput, UpdateNodeInput, VentilationNode } from '../types/node';
 import { reportError } from '../utils/errors';
-import { formatNumber } from '../utils/format';
+import { formatDateTime, formatNumber } from '../utils/format';
 
 export function NetworkPage() {
   const { hasRole } = useAuth();
   const { nodes, validation, loading: nodesLoading, load: loadNodes, create: createNode, update: updateNode, validate } = useNodeStore();
   const { edges, loading: edgesLoading, load: loadEdges, create: createEdge, update: updateEdge } = useEdgeStore();
+  const { active, loadActive } = useStoppageStore();
   const [nodeOpen, setNodeOpen] = useState(false);
   const [edgeOpen, setEdgeOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<VentilationNode | null>(null);
@@ -27,9 +29,11 @@ export function NetworkPage() {
   const canEdit = hasRole('engineer', 'admin');
 
   const refresh = async () => {
-    try { await Promise.all([loadNodes(), loadEdges(), validate()]); } catch (error) { reportError(error, '网络数据加载失败'); }
+    try { await Promise.all([loadNodes(), loadEdges(), validate(), loadActive()]); } catch (error) { reportError(error, '网络数据加载失败'); }
   };
   useEffect(() => { void refresh(); }, []);
+  const stoppedEdgeIDs = useMemo(() => new Set(active.map((stoppage) => stoppage.edge_id)), [active]);
+  const stoppageByEdge = useMemo(() => new Map(active.map((stoppage) => [stoppage.edge_id, stoppage])), [active]);
 
   const nodeColumns: ColumnsType<VentilationNode> = [
     { title: '节点编码', dataIndex: 'code', width: 130, render: (value) => <strong>{value}</strong> },
@@ -47,6 +51,15 @@ export function NetworkPage() {
     { title: '面积', dataIndex: 'area_m2', width: 110, render: (value) => `${formatNumber(value)} m²` },
     { title: '风速上限', dataIndex: 'max_velocity_ms', width: 120, render: (value) => `${formatNumber(value)} m/s` },
     { title: '风门', dataIndex: 'door_state', width: 110, render: (value) => ({ open: '开启', closed: '关闭', regulating: '调节' } as Record<string, string>)[value] },
+    {
+      title: '停风状态', width: 150,
+      render: (_, row) => {
+        const stoppage = stoppageByEdge.get(row.id);
+        return stoppage
+          ? <Tag color="error" title={`${stoppage.reason} · 计划恢复 ${formatDateTime(stoppage.planned_restore_at)}`}>停风中 #{stoppage.id}</Tag>
+          : <span className="muted">正常</span>;
+      },
+    },
     { title: '关键路径', dataIndex: 'critical_path', width: 100, render: (value) => value ? '是' : '否' },
     ...(canEdit ? [{ title: '操作', width: 96, render: (_: unknown, row: AirwayEdge) => <Button size="small" icon={<Edit3 size={14} />} onClick={() => openEdgeEditor(row)}>编辑</Button> }] : []),
   ];
@@ -111,15 +124,27 @@ export function NetworkPage() {
       <PageHeader eyebrow="网络模型 / 当前版本" title="通风网络编辑器" meta={<><span>{nodes.length} 个节点</span><span>{edges.length} 条巷道</span><span>{validation?.valid ? '拓扑校验通过' : `${validation?.issues.length ?? 0} 项拓扑问题`}</span></>} actions={<><Button icon={<RefreshCw size={17} />} onClick={() => void refresh()}>刷新</Button>{canEdit && <Button icon={<Plus size={17} />} onClick={openNodeCreator}>新增节点</Button>}{canEdit && <Button type="primary" icon={<GitPullRequestArrow size={17} />} onClick={openEdgeCreator}>新增巷道</Button>}</>} />
       {validation && !validation.valid && <Alert className="section-alert" type="error" showIcon message="网络校验未通过" description={validation.issues.map((issue) => issue.message).join('；')} />}
       {validation?.valid && <Alert className="section-alert" type="success" showIcon message="有向网络边界与工作面可达性校验通过" />}
+      {active.length > 0 && (
+        <Alert
+          className="section-alert"
+          type="warning"
+          showIcon
+          message={`当前有 ${active.length} 条在停风巷道，推演中按风门关闭计算，网络模型本身的风门状态不被改写`}
+          description={active.map((stoppage) => {
+            const edge = edges.find((item) => item.id === stoppage.edge_id);
+            return <span key={stoppage.id} className="stoppage-network-chip">#{stoppage.id} {edge?.code ?? `巷道 ${stoppage.edge_id}`}（{stoppage.reason}，计划恢复 {formatDateTime(stoppage.planned_restore_at)}）</span>;
+          })}
+        />
+      )}
       <section className="workspace-section topology-section" aria-labelledby="topology-heading">
-        <div className="section-heading"><div><span className="section-index">01</span><h2 id="topology-heading">只读拓扑</h2></div><span>实线为启用风路，红线标识关键路径</span></div>
-        <TopologyView nodes={nodes} edges={edges} />
+        <div className="section-heading"><div><span className="section-index">01</span><h2 id="topology-heading">只读拓扑</h2></div><span>实线为启用风路，红线标识关键路径，橙红虚线为在停风巷道</span></div>
+        <TopologyView nodes={nodes} edges={edges} stoppedEdgeIds={stoppedEdgeIDs} />
       </section>
       <section className="workspace-section" aria-labelledby="network-data-heading">
         <div className="section-heading"><div><span className="section-index">02</span><h2 id="network-data-heading">模型数据</h2></div></div>
         <Tabs items={[
           { key: 'nodes', label: `节点 ${nodes.length}`, children: <Table rowKey="id" columns={nodeColumns} dataSource={nodes} loading={nodesLoading} size="small" pagination={{ pageSize: 8 }} scroll={{ x: 800 }} /> },
-          { key: 'edges', label: `巷道 ${edges.length}`, children: <Table rowKey="id" columns={edgeColumns} dataSource={edges} loading={edgesLoading} size="small" pagination={{ pageSize: 8 }} scroll={{ x: 950 }} /> },
+          { key: 'edges', label: `巷道 ${edges.length}${active.length ? ` · 停风 ${active.length}` : ''}`, children: <Table rowKey="id" columns={edgeColumns} dataSource={edges} loading={edgesLoading} size="small" pagination={{ pageSize: 8 }} scroll={{ x: 1100 }} /> },
         ]} />
       </section>
       <Modal title={editingNode ? `编辑节点 ${editingNode.code}` : '创建通风节点'} open={nodeOpen} onCancel={closeNodeEditor} footer={null} destroyOnClose maskClosable={!saving} closable={!saving}>

@@ -36,6 +36,7 @@ docker compose down -v --remove-orphans
 - 维护进风口、回风口、工作面、网络交点和有向巷道边，检测自环、孤立节点、边界缺失及不可达工作面。
 - 风机方案固定执行 `draft -> pending_review -> approved -> archived`，驳回返回 `draft` 并保留原因；版本条件更新防止并发越级。
 - 根据巷道阻力关系执行确定性迭代，保存输入快照、每轮最大残差、节点压力、边风量和历史运行，不使用随机数伪造结果。
+- 检修停风必须登记：选巷道、写原因和计划恢复时间，提交时把所有在停风巷道一起纳入推演，列出低于需风量的工作面与相关巷道失风量；仍有风的工作面必须逐条写明停风安排，一点风都保不住时直接驳回并指出切断风路的巷道。登记巷道在推演中按风门关闭计算但不改写网络模型，恢复后自动回到登记前状态；同一巷道存在未结束停风时禁止重复登记，登记与恢复均写入审计。
 - 计算风速超限、反向流、工作面需风缺口和关键路径中断四类规则证据，并要求复核员或管理员人工确认。
 - JWT、RBAC、请求限流、request ID、结构化日志和不可变操作审计贯穿后端与前端权限表现。
 
@@ -68,11 +69,11 @@ docker compose down -v --remove-orphans
 │   └── pkg/api/                # 统一响应、分页和错误码
 ├── frontend/src/
 │   ├── api/                    # 按实体拆分的真实 API 客户端
-│   ├── stores/                 # 四个核心实体与认证 Zustand store
+│   ├── stores/                 # 五个核心实体与认证 Zustand store
 │   ├── types/                  # 前后端一致的领域类型
 │   ├── components/common/      # 状态、证据和确认共享组件
 │   ├── hooks/                  # useAuth、useSimulationPolling
-│   ├── pages/                  # 网络、方案、推演、联锁、审计页面
+│   ├── pages/                  # 网络、停风登记、方案、推演、联锁、审计页面
 │   ├── router/                 # 路由守卫
 │   └── utils/                  # 格式化和统一错误展示
 ├── docker-compose.yml
@@ -126,6 +127,10 @@ npm --prefix frontend run build
 | `GET/PUT` | `/api/v1/edges/:id` | 巷道详情与乐观锁更新 |
 | `GET/POST` | `/api/v1/scenarios` | 方案列表与草稿创建 |
 | `POST` | `/api/v1/scenarios/:id/transition` | 提交、批准、驳回、归档 |
+| `GET/POST` | `/api/v1/stoppages` | 停风登记列表与提交（提交时合并所有在停风巷道推演） |
+| `GET` | `/api/v1/stoppages/:id` | 停风登记详情（含影响快照与停风安排） |
+| `POST` | `/api/v1/stoppages/preview` | 停风影响预演：低于需风量工作面、无风工作面与巷道失风量 |
+| `POST` | `/api/v1/stoppages/:id/recover` | 恢复通风，巷道回到登记前风门状态 |
 | `GET/POST` | `/api/v1/simulations` | 历史查询与批准方案推演，启动独立限流 |
 | `GET` | `/api/v1/simulations/:id` | 完整结果和残差历史 |
 | `POST` | `/api/v1/simulations/:id/confirm-risks` | 人工确认风险证据 |
@@ -148,6 +153,14 @@ npm --prefix frontend run build
 - 后端常量：`backend/internal/constants/simulation.go`
 - DTO、repository、service、handler、router：`backend/internal/dto/simulation_run.go`、`backend/internal/repository/simulation_run.go`、`backend/internal/service/simulation_run.go`、`backend/internal/handler/simulation_run.go`、`backend/internal/router/simulation_run.go`
 - 前端类型、API、store、轮询 hook、共享状态组件、页面：`frontend/src/types/simulation.ts`、`frontend/src/api/simulations.ts`、`frontend/src/stores/simulationStore.ts`、`frontend/src/hooks/useSimulationPolling.ts`、`frontend/src/components/common/StatusBadge.tsx`、`frontend/src/pages/SimulationsPage.tsx`
+
+`StoppageStatus = active | recovered`（停风登记生命周期；`active_edge_id` 唯一索引保证同一条巷道同时只有一条有效停风）：
+
+- 数据库约束与 model：`backend/internal/model/ventilation_stoppage.go`
+- 后端常量与校验：`backend/internal/constants/stoppage.go`
+- DTO、repository、service、handler、router：`backend/internal/dto/ventilation_stoppage.go`、`backend/internal/dto/stoppage_impact.go`、`backend/internal/repository/ventilation_stoppage.go`、`backend/internal/service/ventilation_stoppage.go`、`backend/internal/handler/ventilation_stoppage.go`、`backend/internal/router/ventilation_stoppage.go`
+- 推演集成（有效停风按风门关闭、恢复后回登记前状态）：`backend/internal/service/simulation_run.go`
+- 前端类型、API、store、页面、网络页标识：`frontend/src/types/stoppage.ts`、`frontend/src/api/stoppages.ts`、`frontend/src/stores/stoppageStore.ts`、`frontend/src/pages/StoppagesPage.tsx`、`frontend/src/pages/NetworkPage.tsx`、`frontend/src/components/network/TopologyView.tsx`
 
 ## 算法假设与安全边界
 

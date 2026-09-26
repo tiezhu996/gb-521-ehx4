@@ -7,6 +7,7 @@ import { getStoredToken } from '../api/client';
 
 const LoginPage = lazy(() => import('../pages/LoginPage').then((module) => ({ default: module.LoginPage })));
 const NetworkPage = lazy(() => import('../pages/NetworkPage').then((module) => ({ default: module.NetworkPage })));
+const StoppagesPage = lazy(() => import('../pages/StoppagesPage').then((module) => ({ default: module.StoppagesPage })));
 const ScenariosPage = lazy(() => import('../pages/ScenariosPage').then((module) => ({ default: module.ScenariosPage })));
 const SimulationsPage = lazy(() => import('../pages/SimulationsPage').then((module) => ({ default: module.SimulationsPage })));
 const InterlocksPage = lazy(() => import('../pages/InterlocksPage').then((module) => ({ default: module.InterlocksPage })));
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/network" replace /> },
       { path: 'network', element: <DeferredPage><NetworkPage /></DeferredPage> },
+      { path: 'stoppages', element: <DeferredPage><StoppagesPage /></DeferredPage> },
       { path: 'scenarios', element: <DeferredPage><ScenariosPage /></DeferredPage> },
       { path: 'simulations', element: <DeferredPage><SimulationsPage /></DeferredPage> },
       { path: 'interlocks', element: <DeferredPage><InterlocksPage /></DeferredPage> },

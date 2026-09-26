@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Button, Drawer, Spin } from 'antd';
-import { Activity, ClipboardCheck, FileClock, GitBranch, LogOut, Menu, ShieldAlert, Wind } from 'lucide-react';
+import { Activity, Ban, ClipboardCheck, FileClock, GitBranch, LogOut, Menu, ShieldAlert, Wind } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { roleLabel } from './utils/format';
 
 const navItems = [
   { to: '/network', label: '通风网络', Icon: GitBranch },
+  { to: '/stoppages', label: '停风登记', Icon: Ban },
   { to: '/scenarios', label: '风机方案', Icon: ClipboardCheck },
   { to: '/simulations', label: '推演工作台', Icon: Activity },
   { to: '/interlocks', label: '联锁风险', Icon: ShieldAlert },

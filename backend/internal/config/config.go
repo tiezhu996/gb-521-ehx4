@@ -88,6 +88,7 @@ func OpenDatabase(cfg Config) (*gorm.DB, error) {
 			&model.AirwayEdge{},
 			&model.FanScenario{},
 			&model.SimulationRun{},
+			&model.VentilationStoppage{},
 			&model.AuditEvent{},
 		); err != nil {
 			return nil, fmt.Errorf("auto migrate: %w", err)

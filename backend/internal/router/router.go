@@ -33,18 +33,21 @@ func New(cfg config.Config, db *gorm.DB, logger *slog.Logger) *gin.Engine {
 	edgeRepo := repository.NewAirwayEdgeRepository(db)
 	scenarioRepo := repository.NewFanScenarioRepository(db)
 	runRepo := repository.NewSimulationRunRepository(db)
+	stoppageRepo := repository.NewVentilationStoppageRepository(db)
 
 	supportService := service.NewSupportService(supportRepo, cfg.JWTSecret, cfg.JWTTTL)
 	nodeService := service.NewVentilationNodeService(nodeRepo, edgeRepo)
 	edgeService := service.NewAirwayEdgeService(edgeRepo, nodeRepo)
 	scenarioService := service.NewFanScenarioService(scenarioRepo)
-	runService := service.NewSimulationService(runRepo, scenarioRepo, nodeRepo, edgeRepo)
+	runService := service.NewSimulationService(runRepo, scenarioRepo, nodeRepo, edgeRepo, stoppageRepo)
+	stoppageService := service.NewVentilationStoppageService(stoppageRepo, edgeRepo, nodeRepo, scenarioRepo)
 
 	supportHandler := handler.NewSupportHandler(supportService)
 	nodeHandler := handler.NewVentilationNodeHandler(nodeService)
 	edgeHandler := handler.NewAirwayEdgeHandler(edgeService)
 	scenarioHandler := handler.NewFanScenarioHandler(scenarioService)
 	runHandler := handler.NewSimulationRunHandler(runService)
+	stoppageHandler := handler.NewVentilationStoppageHandler(stoppageService)
 
 	engine.GET("/healthz", supportHandler.Health)
 	engine.GET("/readyz", supportHandler.Ready)
@@ -60,6 +63,7 @@ func New(cfg config.Config, db *gorm.DB, logger *slog.Logger) *gin.Engine {
 	registerVentilationNodeRoutes(protected, nodeHandler)
 	registerAirwayEdgeRoutes(protected, edgeHandler)
 	registerFanScenarioRoutes(protected, scenarioHandler)
+	registerVentilationStoppageRoutes(protected, stoppageHandler)
 	runLimiter := middleware.NewRateLimiter("simulation", 10, time.Minute)
 	registerSimulationRoutes(protected, runHandler, runLimiter)
 

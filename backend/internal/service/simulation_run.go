@@ -24,6 +24,7 @@ type SimulationService struct {
 	scenarios *repository.FanScenarioRepository
 	nodes     *repository.VentilationNodeRepository
 	edges     *repository.AirwayEdgeRepository
+	stoppages *repository.VentilationStoppageRepository
 }
 
 type simulationSnapshot struct {
@@ -43,8 +44,8 @@ type solverResult struct {
 	NetworkIssues []dto.NetworkIssue
 }
 
-func NewSimulationService(runs *repository.SimulationRunRepository, scenarios *repository.FanScenarioRepository, nodes *repository.VentilationNodeRepository, edges *repository.AirwayEdgeRepository) *SimulationService {
-	return &SimulationService{runs: runs, scenarios: scenarios, nodes: nodes, edges: edges}
+func NewSimulationService(runs *repository.SimulationRunRepository, scenarios *repository.FanScenarioRepository, nodes *repository.VentilationNodeRepository, edges *repository.AirwayEdgeRepository, stoppages *repository.VentilationStoppageRepository) *SimulationService {
+	return &SimulationService{runs: runs, scenarios: scenarios, nodes: nodes, edges: edges, stoppages: stoppages}
 }
 
 func (s *SimulationService) List(ctx context.Context, query dto.SimulationListQuery) ([]model.SimulationRun, int64, int, int, error) {
@@ -80,6 +81,20 @@ func (s *SimulationService) Start(ctx context.Context, scenarioID uint, actor Ac
 	if err != nil {
 		return nil, mapRepositoryError(err, "巷道边")
 	}
+	// 未结束的停风登记在推演中按风门关闭处理，但不改写巷道自身的 door_state，
+	// 停风恢复后推演自动回到登记前状态。
+	activeStoppages, err := s.stoppages.AllActive(ctx)
+	if err != nil {
+		return nil, mapRepositoryError(err, "停风登记")
+	}
+	stoppedEdgeIDs := make(map[uint]bool, len(activeStoppages))
+	stoppageIDs := make([]uint, 0, len(activeStoppages))
+	for _, stoppage := range activeStoppages {
+		stoppedEdgeIDs[stoppage.EdgeID] = true
+		stoppageIDs = append(stoppageIDs, stoppage.ID)
+	}
+	sort.Slice(stoppageIDs, func(i, j int) bool { return stoppageIDs[i] < stoppageIDs[j] })
+	edges = edgesWithClosedDoors(edges, stoppedEdgeIDs)
 	result := solveNetwork(*scenario, nodes, edges)
 	now := time.Now().UTC()
 	snapshotJSON := mustJSON(simulationSnapshot{Scenario: *scenario, Nodes: nodes, Edges: edges})
@@ -93,7 +108,7 @@ func (s *SimulationService) Start(ctx context.Context, scenarioID uint, actor Ac
 	audit := actor.Audit("simulation_run.started", "simulation_run")
 	audit.Metadata = string(mustJSON(map[string]interface{}{
 		"scenario_id": scenario.ID, "result_status": result.Status,
-		"network_issues": result.NetworkIssues,
+		"network_issues": result.NetworkIssues, "active_stoppage_ids": stoppageIDs,
 	}))
 	if err := s.runs.Create(ctx, run, audit); err != nil {
 		return nil, mapRepositoryError(err, "推演记录")
