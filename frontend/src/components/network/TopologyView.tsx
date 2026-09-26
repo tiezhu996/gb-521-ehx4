@@ -2,8 +2,9 @@ import type { AirwayEdge } from '../../types/edge';
 import type { VentilationNode } from '../../types/node';
 
 const nodeColor = { intake: '#196b50', exhaust: '#4d5960', workface: '#b44b35', junction: '#b18416' } as const;
+const stoppedColor = '#8e3526';
 
-export function TopologyView({ nodes, edges }: { nodes: VentilationNode[]; edges: AirwayEdge[] }) {
+export function TopologyView({ nodes, edges, stoppedEdgeIds }: { nodes: VentilationNode[]; edges: AirwayEdge[]; stoppedEdgeIds?: ReadonlySet<number> }) {
   const positions = new Map<number, { x: number; y: number }>();
   nodes.forEach((node, index) => {
     const column = index % 4;
@@ -11,6 +12,7 @@ export function TopologyView({ nodes, edges }: { nodes: VentilationNode[]; edges
     positions.set(node.id, { x: 90 + column * 190, y: 78 + row * 128 + (column % 2) * 30 });
   });
   const height = Math.max(260, Math.ceil(nodes.length / 4) * 128 + 90);
+  const hasStopped = Boolean(stoppedEdgeIds && stoppedEdgeIds.size > 0);
   return (
     <div className="topology-shell">
       <svg className="topology" viewBox={`0 0 760 ${height}`} role="img" aria-label={`通风网络拓扑，${nodes.length} 个节点，${edges.length} 条巷道`}>
@@ -18,15 +20,26 @@ export function TopologyView({ nodes, edges }: { nodes: VentilationNode[]; edges
           <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
             <path d="M0,0 L0,6 L8,3 z" fill="#738078" />
           </marker>
+          <marker id="arrow-stopped" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+            <path d="M0,0 L0,6 L8,3 z" fill={stoppedColor} />
+          </marker>
         </defs>
         {edges.map((edge) => {
           const from = positions.get(edge.from_node_id);
           const to = positions.get(edge.to_node_id);
           if (!from || !to) return null;
+          const stopped = stoppedEdgeIds?.has(edge.id) ?? false;
           return (
             <g key={edge.id} opacity={edge.enabled ? 1 : 0.35}>
-              <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={edge.critical_path ? '#a23a2b' : '#738078'} strokeWidth={edge.critical_path ? 3 : 2} strokeDasharray={edge.door_state === 'closed' ? '5 5' : undefined} markerEnd="url(#arrow)" />
-              <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8} textAnchor="middle" className="edge-label">{edge.code}</text>
+              {stopped && <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#f2d8cf" strokeWidth={9} />}
+              <line
+                x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                stroke={stopped ? stoppedColor : edge.critical_path ? '#a23a2b' : '#738078'}
+                strokeWidth={stopped || edge.critical_path ? 3 : 2}
+                strokeDasharray={stopped || edge.door_state === 'closed' ? '5 5' : undefined}
+                markerEnd={stopped ? 'url(#arrow-stopped)' : 'url(#arrow)'}
+              />
+              <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8} textAnchor="middle" className={stopped ? 'edge-label edge-label-stopped' : 'edge-label'}>{stopped ? `${edge.code} 停风` : edge.code}</text>
             </g>
           );
         })}
@@ -43,6 +56,7 @@ export function TopologyView({ nodes, edges }: { nodes: VentilationNode[]; edges
       </svg>
       <div className="topology-legend" aria-label="拓扑图例">
         {Object.entries(nodeColor).map(([type, color]) => <span key={type}><i style={{ backgroundColor: color }} />{({ intake: '进风', exhaust: '回风', workface: '工作面', junction: '交点' } as Record<string, string>)[type]}</span>)}
+        {hasStopped && <span><i style={{ backgroundColor: stoppedColor }} />停风中</span>}
       </div>
     </div>
   );

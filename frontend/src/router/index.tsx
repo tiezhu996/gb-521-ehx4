@@ -10,6 +10,7 @@ const NetworkPage = lazy(() => import('../pages/NetworkPage').then((module) => (
 const ScenariosPage = lazy(() => import('../pages/ScenariosPage').then((module) => ({ default: module.ScenariosPage })));
 const SimulationsPage = lazy(() => import('../pages/SimulationsPage').then((module) => ({ default: module.SimulationsPage })));
 const InterlocksPage = lazy(() => import('../pages/InterlocksPage').then((module) => ({ default: module.InterlocksPage })));
+const StoppagesPage = lazy(() => import('../pages/StoppagesPage').then((module) => ({ default: module.StoppagesPage })));
 const AuditPage = lazy(() => import('../pages/AuditPage').then((module) => ({ default: module.AuditPage })));
 
 function DeferredPage({ children }: { children: ReactNode }) {
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
       { path: 'scenarios', element: <DeferredPage><ScenariosPage /></DeferredPage> },
       { path: 'simulations', element: <DeferredPage><SimulationsPage /></DeferredPage> },
       { path: 'interlocks', element: <DeferredPage><InterlocksPage /></DeferredPage> },
+      { path: 'stoppages', element: <DeferredPage><StoppagesPage /></DeferredPage> },
       { path: 'audit', element: <RequireAuditRole /> },
     ],
   },

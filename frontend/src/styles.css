@@ -151,6 +151,13 @@ legend { padding: 0 7px; color: var(--coal-600); font-size: 0.76rem; font-weight
 .audit-filters { margin: 22px 0 6px; display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(140px, .8fr) minmax(140px, .8fr) minmax(160px, 1fr) auto auto; gap: 8px; align-items: center; }
 .audit-diff { color: var(--coal-600); font-size: 0.75rem; }
 
+.stoppage-actions { display: flex; gap: 10px; margin-top: 4px; }
+.evaluation-result { margin-top: 20px; }
+.evaluation-subheading { margin: 20px 0 10px; font-size: 0.9rem; }
+.danger-text { color: var(--red); }
+.cut-edge-code { display: inline-block; margin: 0 4px; padding: 1px 7px; background: #f7e8e4; border: 1px solid #d8a395; border-radius: 3px; font-weight: 700; }
+.edge-label-stopped { font-size: 11px; font-weight: 700; fill: #8e3526; paint-order: stroke; stroke: #edf2ef; stroke-width: 4px; }
+
 .login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(360px, 1.08fr) minmax(400px, .92fr); background: var(--surface); }
 .login-identity { min-height: 100vh; display: flex; flex-direction: column; justify-content: space-between; padding: clamp(28px, 5vw, 72px); color: #dde7e2; background: var(--coal-950); border-right: 10px solid var(--green); }
 .login-wordmark { display: flex; align-items: center; gap: 12px; color: #f2f7f4; font-size: 0.9rem; font-weight: 700; }

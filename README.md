@@ -37,6 +37,7 @@ docker compose down -v --remove-orphans
 - 风机方案固定执行 `draft -> pending_review -> approved -> archived`，驳回返回 `draft` 并保留原因；版本条件更新防止并发越级。
 - 根据巷道阻力关系执行确定性迭代，保存输入快照、每轮最大残差、节点压力、边风量和历史运行，不使用随机数伪造结果。
 - 计算风速超限、反向流、工作面需风缺口和关键路径中断四类规则证据，并要求复核员或管理员人工确认。
+- 检修停风必须先登记：选巷道、填原因和恢复时间，提交时联算全部在停巷道，列出需风缺口工作面、巷道失风量和完全失风驳回原因；登记中的巷道在推演里按风门关闭计算，恢复后回到原状态，同一巷道只允许一条未恢复登记。
 - JWT、RBAC、请求限流、request ID、结构化日志和不可变操作审计贯穿后端与前端权限表现。
 
 ## 技术栈
@@ -64,15 +65,15 @@ docker compose down -v --remove-orphans
 │   │   ├── service/            # 业务规则、状态机与求解器
 │   │   ├── handler/            # HTTP 参数和响应适配
 │   │   ├── middleware/         # request ID、日志、认证、RBAC、恢复、限流
-│   │   └── router/             # 依赖组装与实体路由
+│   │   └── router/             # 依赖组装与实体路由（routes.go 集中注册）
 │   └── pkg/api/                # 统一响应、分页和错误码
 ├── frontend/src/
 │   ├── api/                    # 按实体拆分的真实 API 客户端
-│   ├── stores/                 # 四个核心实体与认证 Zustand store
+│   ├── stores/                 # 核心实体与认证 Zustand store
 │   ├── types/                  # 前后端一致的领域类型
 │   ├── components/common/      # 状态、证据和确认共享组件
 │   ├── hooks/                  # useAuth、useSimulationPolling
-│   ├── pages/                  # 网络、方案、推演、联锁、审计页面
+│   ├── pages/                  # 网络、方案、推演、联锁、停风登记、审计页面
 │   ├── router/                 # 路由守卫
 │   └── utils/                  # 格式化和统一错误展示
 ├── docker-compose.yml
@@ -129,6 +130,10 @@ npm --prefix frontend run build
 | `GET/POST` | `/api/v1/simulations` | 历史查询与批准方案推演，启动独立限流 |
 | `GET` | `/api/v1/simulations/:id` | 完整结果和残差历史 |
 | `POST` | `/api/v1/simulations/:id/confirm-risks` | 人工确认风险证据 |
+| `GET` | `/api/v1/stoppages` | 停风登记列表，可按状态筛选 |
+| `POST` | `/api/v1/stoppages` | 提交停风登记（联算在停巷道并评估失风） |
+| `POST` | `/api/v1/stoppages/preview` | 停风影响预评估，不落库 |
+| `POST` | `/api/v1/stoppages/:id/restore` | 恢复停风巷道，推演回到原状态 |
 | `GET` | `/api/v1/audits` | 按操作者、对象、状态和时间筛选审计 |
 
 响应统一为 `{ data, request_id, meta? }` 或 `{ error: { code, message, details? }, request_id }`，时间使用 RFC 3339 UTC 字符串。
@@ -139,15 +144,22 @@ npm --prefix frontend run build
 
 - 数据库约束与 model：`backend/internal/model/fan_scenario.go`
 - 后端常量与状态机：`backend/internal/constants/scenario.go`
-- DTO、repository、service、handler、router：`backend/internal/dto/fan_scenario.go`、`backend/internal/repository/fan_scenario.go`、`backend/internal/service/fan_scenario.go`、`backend/internal/handler/fan_scenario.go`、`backend/internal/router/fan_scenario.go`
+- DTO、repository、service、handler、router：`backend/internal/dto/fan_scenario.go`、`backend/internal/repository/fan_scenario.go`、`backend/internal/service/fan_scenario.go`、`backend/internal/handler/fan_scenario.go`、`backend/internal/router/routes.go`
 - 前端类型、API、store、共享状态组件、页面：`frontend/src/types/scenario.ts`、`frontend/src/api/scenarios.ts`、`frontend/src/stores/scenarioStore.ts`、`frontend/src/components/common/StatusBadge.tsx`、`frontend/src/pages/ScenariosPage.tsx`
 
 `SimulationStatus = queued | running | converged | not_converged | invalid_input | failed`：
 
 - 数据库约束与 model：`backend/internal/model/simulation_run.go`
 - 后端常量：`backend/internal/constants/simulation.go`
-- DTO、repository、service、handler、router：`backend/internal/dto/simulation_run.go`、`backend/internal/repository/simulation_run.go`、`backend/internal/service/simulation_run.go`、`backend/internal/handler/simulation_run.go`、`backend/internal/router/simulation_run.go`
+- DTO、repository、service、handler、router：`backend/internal/dto/simulation_run.go`、`backend/internal/repository/simulation_run.go`、`backend/internal/service/simulation_run.go`、`backend/internal/handler/simulation_run.go`、`backend/internal/router/routes.go`
 - 前端类型、API、store、轮询 hook、共享状态组件、页面：`frontend/src/types/simulation.ts`、`frontend/src/api/simulations.ts`、`frontend/src/stores/simulationStore.ts`、`frontend/src/hooks/useSimulationPolling.ts`、`frontend/src/components/common/StatusBadge.tsx`、`frontend/src/pages/SimulationsPage.tsx`
+
+`StoppageStatus = stopping | restored`（停风登记状态）：
+
+- 数据库约束与 model（含同巷道仅一条未恢复登记的部分唯一索引）：`backend/internal/model/airway_edge.go`
+- 后端常量：`backend/internal/constants/network.go`
+- DTO、repository、service、handler、router：`backend/internal/dto/air_stoppage.go`、`backend/internal/repository/air_stoppage.go`、`backend/internal/service/air_stoppage.go`、`backend/internal/handler/air_stoppage.go`、`backend/internal/router/routes.go`
+- 前端类型、API、store、共享状态组件、页面：`frontend/src/types/stoppage.ts`、`frontend/src/api/stoppages.ts`、`frontend/src/stores/stoppageStore.ts`、`frontend/src/components/common/StatusBadge.tsx`、`frontend/src/pages/StoppagesPage.tsx`、`frontend/src/pages/NetworkPage.tsx`
 
 ## 算法假设与安全边界
 

@@ -24,12 +24,14 @@ type SimulationService struct {
 	scenarios *repository.FanScenarioRepository
 	nodes     *repository.VentilationNodeRepository
 	edges     *repository.AirwayEdgeRepository
+	stoppages *repository.AirStoppageRepository
 }
 
 type simulationSnapshot struct {
-	Scenario model.FanScenario       `json:"scenario"`
-	Nodes    []model.VentilationNode `json:"nodes"`
-	Edges    []model.AirwayEdge      `json:"edges"`
+	Scenario        model.FanScenario       `json:"scenario"`
+	Nodes           []model.VentilationNode `json:"nodes"`
+	Edges           []model.AirwayEdge      `json:"edges"`
+	StoppageEdgeIDs []uint                  `json:"stoppage_edge_ids,omitempty"`
 }
 
 type solverResult struct {
@@ -43,8 +45,8 @@ type solverResult struct {
 	NetworkIssues []dto.NetworkIssue
 }
 
-func NewSimulationService(runs *repository.SimulationRunRepository, scenarios *repository.FanScenarioRepository, nodes *repository.VentilationNodeRepository, edges *repository.AirwayEdgeRepository) *SimulationService {
-	return &SimulationService{runs: runs, scenarios: scenarios, nodes: nodes, edges: edges}
+func NewSimulationService(runs *repository.SimulationRunRepository, scenarios *repository.FanScenarioRepository, nodes *repository.VentilationNodeRepository, edges *repository.AirwayEdgeRepository, stoppages *repository.AirStoppageRepository) *SimulationService {
+	return &SimulationService{runs: runs, scenarios: scenarios, nodes: nodes, edges: edges, stoppages: stoppages}
 }
 
 func (s *SimulationService) List(ctx context.Context, query dto.SimulationListQuery) ([]model.SimulationRun, int64, int, int, error) {
@@ -80,9 +82,14 @@ func (s *SimulationService) Start(ctx context.Context, scenarioID uint, actor Ac
 	if err != nil {
 		return nil, mapRepositoryError(err, "巷道边")
 	}
-	result := solveNetwork(*scenario, nodes, edges)
+	stoppageEdgeIDs, err := s.stoppages.ActiveEdgeIDs(ctx)
+	if err != nil {
+		return nil, mapRepositoryError(err, "停风登记")
+	}
+	solverEdges := applyStoppageOverlay(edges, stoppageEdgeIDs)
+	result := solveNetwork(*scenario, nodes, solverEdges)
 	now := time.Now().UTC()
-	snapshotJSON := mustJSON(simulationSnapshot{Scenario: *scenario, Nodes: nodes, Edges: edges})
+	snapshotJSON := mustJSON(simulationSnapshot{Scenario: *scenario, Nodes: nodes, Edges: solverEdges, StoppageEdgeIDs: stoppageEdgeIDs})
 	run := &model.SimulationRun{
 		ScenarioID: scenario.ID, RunStatus: string(result.Status), IterationCount: result.Iterations,
 		Residual: result.Residual, InputSnapshotJSON: snapshotJSON,
@@ -93,7 +100,7 @@ func (s *SimulationService) Start(ctx context.Context, scenarioID uint, actor Ac
 	audit := actor.Audit("simulation_run.started", "simulation_run")
 	audit.Metadata = string(mustJSON(map[string]interface{}{
 		"scenario_id": scenario.ID, "result_status": result.Status,
-		"network_issues": result.NetworkIssues,
+		"network_issues": result.NetworkIssues, "stoppage_edge_ids": stoppageEdgeIDs,
 	}))
 	if err := s.runs.Create(ctx, run, audit); err != nil {
 		return nil, mapRepositoryError(err, "推演记录")

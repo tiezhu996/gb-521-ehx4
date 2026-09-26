@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Drawer, Spin } from 'antd';
-import { Activity, ClipboardCheck, FileClock, GitBranch, LogOut, Menu, ShieldAlert, Wind } from 'lucide-react';
+import { Activity, ClipboardCheck, FileClock, GitBranch, LogOut, Menu, OctagonPause, ShieldAlert, Wind } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { roleLabel } from './utils/format';
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/scenarios', label: '风机方案', Icon: ClipboardCheck },
   { to: '/simulations', label: '推演工作台', Icon: Activity },
   { to: '/interlocks', label: '联锁风险', Icon: ShieldAlert },
+  { to: '/stoppages', label: '停风登记', Icon: OctagonPause },
   { to: '/audit', label: '审计追踪', Icon: FileClock, restricted: true },
 ];
 

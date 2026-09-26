@@ -44,6 +44,16 @@ func (r *FanScenarioRepository) Find(ctx context.Context, id uint) (*model.FanSc
 	return &scenario, nil
 }
 
+func (r *FanScenarioRepository) LatestApproved(ctx context.Context) (*model.FanScenario, error) {
+	var scenario model.FanScenario
+	err := r.db.WithContext(ctx).
+		Where("scenario_status = ?", "approved").Order("updated_at DESC, id DESC").First(&scenario).Error
+	if err != nil {
+		return nil, fmt.Errorf("find latest approved fan scenario: %w", err)
+	}
+	return &scenario, nil
+}
+
 func (r *FanScenarioRepository) Create(ctx context.Context, scenario *model.FanScenario, audit AuditRecord) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(scenario).Error; err != nil {
